@@ -1,103 +1,112 @@
 <?php
-ini_set('display_errors', 1);
-ini_set('display_startup_errors', 1);
-error_reporting(E_ALL);
 
-    require './vendor/autoload.php';
-    use PhpOffice\PhpSpreadsheet\Spreadsheet;
-    use PhpOffice\PhpSpreadsheet\Writer\Xls;
+require './vendor/autoload.php';
 
-function array_to_csv_download($array, $filename = "export.csv", $delimiter=";") {
-    $f = fopen('./uploaded_files/csvready.csv', 'w');
+use App\SQLiteInsert;
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Writer\Xls;
+use App\SQLiteConnection;
 
-    foreach ($array as $line) {
-        fputcsv($f, $line, $delimiter);
+try {
+    $pdo = (new SQLiteConnection())->connect();
+    $sqlite = new SQLiteInsert($pdo);
+    $convertedFiles = $sqlite->getLast10ConvertedFiles();
+} catch (PDOException $e) {
+    echo $e->getMessage();
+    $convertedFiles = null;
+}
+
+
+if (!empty($_FILES['uploadedFile']) && !empty($_FILES['uploadedFile']['tmp_name'])) {
+    $spreadsheet = new Spreadsheet();
+    $sheet = $spreadsheet->getActiveSheet();
+    $handle = fopen($_FILES['uploadedFile']['tmp_name'], 'rb');
+    $i = 1;
+    if ($handle) {
+        while (($buffer = fgets($handle, 4096)) !== false) {
+            $sheet->setCellValue('A' . $i, trim($buffer[8]));
+            $sheet->setCellValue('B' . $i, trim(substr($buffer, 10, 14)));
+            $sheet->setCellValue('C' . $i, trim(substr($buffer, 30, 6)));
+            $sheet->setCellValue('D' . $i, trim(substr($buffer, 76, 18)));
+            $sheet->setCellValue('E' . $i, trim(substr($buffer, 94, 5)));
+            $sheet->setCellValue('F' . $i, substr($buffer, 99, 25));
+            $sheet->setCellValue('G' . $i, (int)substr($buffer, 149, 13) / 100);
+            $i++;
+        }
+        if (!feof($handle)) {
+            echo "Erreur: fgets() a échoué\n";
+        }
+        fclose($handle);
     }
-    fclose($f);
-
-$spreadsheet = new Spreadsheet();
-$reader = new \PhpOffice\PhpSpreadsheet\Reader\Csv();
-/* Set CSV parsing options */
-$reader->setDelimiter(';');
-$reader->setEnclosure('"');
-$reader->setSheetIndex(0);
-/* Load a CSV file and save as a XLS */
-$spreadsheet = $reader->load("./uploaded_files/csvready.csv");
-$writer = new Xls($spreadsheet);
-
-$writer->save('./uploaded_files/export.xls');
-$spreadsheet->disconnectWorksheets();
-unset($spreadsheet);
-header("Content-Type: application/xls");
-header("Content-Disposition: attachment; filename=export.xls");
-readfile('./uploaded_files/export.xls');
-    die();
+    $writer = new Xls($spreadsheet);
+    $convertedFilePath = './uploaded_files/' . $_FILES['uploadedFile']['name'] . '_convert.xls';
+    $writer->save($convertedFilePath);
+    // Download file as XLS
+    try {
+        $pdo = (new SQLiteConnection())->connect();
+        $sqlite = new SQLiteInsert($pdo);
+        $sqlite->insertConvertedFileRecord($_FILES['uploadedFile']['name'], $convertedFilePath);
+    } catch (PDOException $e) {
+        echo $e->getMessage();
+    }
+    header('Content-Type: application/xls');
+    header('Content-Disposition: attachment; filename=export.xls');
+    $writer->save('php://output');
 }
-if (!empty($_FILES['uploadedFile'])) {
-  $filename = $_FILES['uploadedFile']['name'];
-        //$ext = pathinfo($filename, PATHINFO_EXTENSION);
-  $uploaddir = './uploaded_files/';
-            $uploadfile = $uploaddir . basename($_FILES['uploadedFile']['name']);
-            move_uploaded_file($_FILES['uploadedFile']['tmp_name'], $uploadfile);
-            
-
-  $handle = fopen('./uploaded_files/' .$_FILES['uploadedFile']['name'], "r");
-  $i = 0;
-  //$a[$i][0]   = "A";
-  $a[$i][1]   = "B";
-  //$a[$i][2]   = "C";
-  $a[$i][3]   = "D";
-  //$a[$i][4]   = "E";
-  $a[$i][5]   = "F";
-  //$a[$i][6]   = "G";
-  $a[$i][7]   = "H";
-  $a[$i][8]   = "I";
-  $a[$i][9]   = "J";
-  //$a[$i][10]   = "K";
-  $a[$i++][11]   = "L";
-  //$a[$i++][12]   = "M";
-  if ($handle) {
-      while (($buffer = fgets($handle, 4096)) !== false) {
-          //$a[$i][0]   = trim(substr($buffer, 0, 8));
-          $a[$i][1]   = trim(substr($buffer, 8, 1));
-          //$a[$i][2]   = trim(substr($buffer, 9, 1));
-          $a[$i][3]   = trim(substr($buffer, 10, 14));
-          //$a[$i][4]   = trim(substr($buffer, 26, 4));
-          $a[$i][5]   = trim(substr($buffer, 30, 6));
-          //$a[$i][6]   = trim(substr($buffer, 36, 40));
-          $a[$i][7]   = trim(substr($buffer, 76, 18));
-          $a[$i][8]   = trim(substr($buffer, 94, 5));
-          $a[$i][9]   = substr($buffer, 99, 25);
-          //$a[$i][10]   = trim(substr($buffer, 124, 25));
-          $a[$i++][11]   = str_replace('.', ',', intval(substr($buffer, 149, 13)) / 100);
-          //$a[$i++][12]   = trim(substr($buffer, 162, -2));
-          
-      }
-      if (!feof($handle)) {
-          echo "Erreur: fgets() a échoué\n";
-      }
-      fclose($handle);
-      
-  }
-  array_to_csv_download($a);
-  
-}
-
 ?>
 
 <!DOCTYPE html>
-<html>
+<html lang="fr">
 <head>
-  <title>PHP File Upload</title>
+    <title>Fnac file converter</title>
+  <!-- Bootstrap -->
+    <link href='https://cdn.jsdelivr.net/npm/bootstrap@5.2.2/dist/css/bootstrap.min.css' rel='stylesheet'
+          integrity='sha384-Zenh87qX5JnK2Jl0vWa8Ck2rdkQ2Bzep5IDxbcnCeuOxjzrPF/et3URy9Bv1WTRi' crossorigin='anonymous'>
+    <script
+            src='https://cdn.jsdelivr.net/npm/bootstrap@5.2.2/dist/js/bootstrap.bundle.min.js'
+            integrity='sha384-OERcA2EqjJCMA+/3y+gxIOqMEjwtxJY7qPCqsdltbNJuaOe923+mo//f6V8Qbsw3'
+            crossorigin='anonymous'></script>
 </head>
+  <!--HTML body with a form to upload a file and a table to display the last 10 converted files using Bootstrap-->
 <body>
-  <form method="POST" enctype="multipart/form-data">
-    <div>
-      <span>Upload a File:</span>
-      <input type="file" name="uploadedFile" />
+<div class="container">
+    <div class="row text-center">
+        <div class="col-md-12">
+            <h1 class="m-3">Fnac file converter</h1>
+            <form action="index.php" method="post" enctype="multipart/form-data">
+                <div class="form-group m-5
+                ">
+                    <label for="uploadedFile">Upload a file</label>
+                    <input type="file" class="form-control-file" id="uploadedFile" name="uploadedFile">
+                </div>
+                <button type="submit" class="btn btn-primary">Convert</button>
+            </form>
+        </div>
     </div>
-
-    <input type="submit" name="uploadBtn" value="Upload" />
-  </form>
+    <div class="row my-5">
+        <div class="col-md-12">
+            <h2>Last 10 converted files</h2>
+            <table class="table">
+                <thead>
+                <tr>
+                    <th scope="col">File name</th>
+                    <th scope="col">Converted file path</th>
+                    <th scope="col">Converted at</th>
+                </tr>
+                </thead>
+                <tbody>
+                <?php if (!empty($convertedFiles)): ?>
+                    <?php foreach ($convertedFiles as $convertedFile): ?>
+                    <tr>
+                            <td><?= $convertedFile['original_file_path'] ?></td>
+                            <td><a href="<?= $convertedFile['converted_file_path'] ?>"><?= basename($convertedFile['converted_file_path']) ?></a></td>
+                            <td><?= $convertedFile['created_at'] ?></td>
+                        </tr>
+                    <?php endforeach; ?>
+                <?php endif; ?>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
 </body>
-</html>
