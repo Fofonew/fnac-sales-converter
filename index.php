@@ -30,7 +30,7 @@ if (!empty($_FILES['uploadedFile']) && !empty($_FILES['uploadedFile']['tmp_name'
             $sheet->setCellValue('D' . $i, trim(substr($buffer, 76, 18)));
             $sheet->setCellValue('E' . $i, trim(substr($buffer, 94, 5)));
             $sheet->setCellValue('F' . $i, substr($buffer, 99, 25));
-            $sheet->setCellValue('G' . $i, (int)substr($buffer, 149, 13) / 100);
+            $sheet->setCellValue('G' . $i, (float)substr($buffer, 149, 13) / 100);
             $i++;
         }
         if (!feof($handle)) {
