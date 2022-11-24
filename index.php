@@ -50,7 +50,7 @@ if (!empty($_FILES['uploadedFile']) && !empty($_FILES['uploadedFile']['tmp_name'
         echo $e->getMessage();
     }
     header('Content-Type: application/xls');
-    header('Content-Disposition: attachment; filename=export.xls');
+    header('Content-Disposition: attachment; filename=' . $_FILES['uploadedFile']['name'] . '_convert.xls');
     $writer->save('php://output');
 }
 ?>
